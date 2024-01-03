@@ -43,7 +43,7 @@ def token_us(text):
       if 'NN' in pos:
         NN_words.append(word)
 
-  #단어 원형으로 변형( stations -> station)
+  #단어 원형으로 변형(stations -> station)
   lemmatizer = WordNetLemmatizer()
   lemmatized_words = []
   for word in NN_words:
@@ -66,8 +66,10 @@ def token_us(text):
       vocab[word] = 0
     vocab[word] += 1
 
+    sort_vocab = dict(sorted(vocab.items(), key=lambda x: x[1], reverse=True))
 
-  print(vocab)
+
+  print(sort_vocab)
   print(len(text.index))
 
 
