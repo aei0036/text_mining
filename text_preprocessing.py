@@ -6,6 +6,7 @@ from nltk.tag import pos_tag
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords
 from nltk import Text
+import numpy as np
 import pandas as pd
 import time
 #from konlpy.tag import Okt
@@ -20,7 +21,21 @@ import time
 target_field = ['국가코드','발명의 명칭','요약','대표청구항']
 
 
+def preprocess(text):
 
+    words = list(text.keys())
+
+    word_to_id = {}
+    id_to_word = {}
+    for word in words:
+        if word not in word_to_id:
+            new_id = len(word_to_id)
+            word_to_id[word] = new_id
+            id_to_word[new_id] = word
+
+    corpus = np.array([word_to_id[w] for w in words])
+
+    return corpus, word_to_id, id_to_word
 
 
 def patent_data_open():
@@ -117,13 +132,17 @@ def token_us(text):
       if word not in vocab[i]:
         vocab[i][word] = 0
       vocab[i][word] += 1
-      sort_vocab[i].append(dict(sorted(vocab[i].items(), key=lambda x: x[1], reverse=True)))
+      sort_vocab[i] = dict(sorted(vocab[i].items(), key=lambda x: x[1], reverse=True))
 
-  print(sort_vocab)
-  print(total_sort_vocab)
+  result_token = [total_sort_vocab, sort_vocab]
 
+  return result_token
 
 def job():
+  
+  #실행시간체크시작
+  start_time = time.time()
+
   # 특허 excel data 읽어옴
   patent_text = patent_data_open()
   
@@ -134,13 +153,17 @@ def job():
   # 한국어 명사 빈도 추출
   #token_kr(patent_text_kr)
 
-  start_time = time.time()
   # 영어 명사 빈도 추출
-  token_us(patent_text_us)
+  token_us_vocab = token_us(patent_text_us)
+
+  #활용 단어 사전 형성(단어 - id 매칭 / corpus : 단어id목록)
+  corpus, word_to_id, id_to_word = preprocess(token_us_vocab[0])
 
 
+  #print(token_us_vocab)
+
+  #실행시간체크종료
   end_time = time.time()
-
   print("러닝타임 :",end_time - start_time)
 
 if __name__ == '__main__':
