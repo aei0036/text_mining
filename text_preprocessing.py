@@ -9,6 +9,7 @@ from nltk import Text
 import numpy as np
 import pandas as pd
 import time
+from gensim.models import Word2Vec
 #from konlpy.tag import Okt
 #from konlpy.tag import Kkma
 
@@ -19,6 +20,7 @@ import time
 
 # 분석 대상 필드(분석 대상 엑셀 1행과 명칭 통일 / '국가코드'는 고정(영어/한국어 파악을 위한 필드))
 target_field = ['국가코드','발명의 명칭','요약','대표청구항']
+
 
 
 def preprocess(text):
@@ -60,19 +62,17 @@ def language_type_filter(patent_text, lan_type):
 
 def token_us(text):
 
-  text_temp = [ 0 for i in range (len(target_field))]
-  text_pos = []
+  #text_temp = [ 0 for i in range (len(target_field))]
 
   # 분석 대상 데이터 소문자로 통일
   for i in range (1, len(target_field)):
-    text[text_temp[i]] = text[target_field[i]].str.lower()
+    text[i] = text[target_field[i]].str.lower()
 
   #대표청구항 문장 토큰화(word_tokenize()) 및 품사 매칭(pos_tag())
   for i in range (1, len(target_field)):
-     text[f'{target_field[i]}_명사추출'] = text[text_temp[i]].apply(lambda x: pos_tag(word_tokenize(x)))
+     text[f'{target_field[i]}_명사추출'] = text[i].apply(lambda x: pos_tag(word_tokenize(x)))
   
   
-
   #명사만 추출
   NN_words = [[] for i in range (len(text.index))]
   total_NN_words = []
@@ -109,24 +109,26 @@ def token_us(text):
         if word not in stop_words:
             total_result_words.append(word)
 
+  #길이가 2 이하인 단어 제거
   for i in range(len(lemmatized_words)):
     for word in lemmatized_words[i]:
       if len(word) > 2:
         if word not in stop_words:
           result_words[i].append(word)
 
-
   #단어 빈도수 체크
   total_vocab = {}
-  sort_vocab = [[] for i in range (len(text.index))]
-  vocab = [{} for i in range (len(text.index))]
+  sort_vocab = [[] for i in range (len(result_words))]
+  vocab = [{} for i in range (len(result_words))]
 
+  #모든 특허에 대하여 카운트
   for word in total_result_words:
     if word not in total_vocab:
       total_vocab[word] = 0
     total_vocab[word] += 1
     total_sort_vocab = dict(sorted(total_vocab.items(), key=lambda x: x[1], reverse=True))
 
+  #각 특허별로 카운트
   for i in range(len(result_words)):
     for word in result_words[i]:
       if word not in vocab[i]:
@@ -137,6 +139,41 @@ def token_us(text):
   result_token = [total_sort_vocab, sort_vocab]
 
   return result_token
+
+
+def vec_us(text):
+  # 분석 대상 데이터 소문자로 통일
+  for i in range (1, len(target_field)):
+    text[i] = text[target_field[i]].str.lower()
+
+  #문장 토큰화(word_tokenize()) 및 품사 매칭(pos_tag())
+  text_to_sentence = []
+
+  #문장 단위로 분할
+  for i in range (1, len(target_field)):
+    for j in range (len(text.index)):
+      text_to_sentence.append(text[i].values[j].replace(':','.').replace(',','.').replace(';','.').split('.'))
+  
+  #문장을 단어로 분할
+  sentence_to_token = ['' for i in range (len(text_to_sentence))]
+  for i in range (len(text_to_sentence)):
+    sentence_to_token[i] = str(text_to_sentence[i]).replace('[','').replace(']','').replace("'",'').split(' ')
+
+  #불용어 제거
+  stop_words = set(stopwords.words('english'))
+  result_words = [[] for i in range (len(sentence_to_token))]   #엑셀 행별로 작업
+
+  #길이가 2 이하인 단어 및 불용어 제거
+  for i in range(len(sentence_to_token)):
+    for word in sentence_to_token[i]:
+      if len(word) > 2:
+        if word not in stop_words:
+          result_words[i].append(word)
+
+  model = Word2Vec(result_words, vector_size=300, window=7, min_count=5, workers=1)
+
+  model_result = model.wv.most_similar("vehicle")
+  print(model_result)
 
 def job():
   
@@ -153,11 +190,14 @@ def job():
   # 한국어 명사 빈도 추출
   #token_kr(patent_text_kr)
 
-  # 영어 명사 빈도 추출
-  token_us_vocab = token_us(patent_text_us)
+  # 영어 토큰화 및 단어사용빈도 카운팅
+  #sentence_to_token_us = token_us(patent_text_us)
 
   #활용 단어 사전 형성(단어 - id 매칭 / corpus : 단어id목록)
-  corpus, word_to_id, id_to_word = preprocess(token_us_vocab[0])
+  #corpus, word_to_id, id_to_word = preprocess(sentence_to_token_us[0])
+
+  # 영어 토큰화 및 word2vec 라이브러리 사용
+  sentence_to_vec_us = vec_us(patent_text_us)
 
 
   #print(token_us_vocab)
