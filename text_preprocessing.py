@@ -41,7 +41,7 @@ def preprocess(text):
 
 
 def patent_data_open():
-  file_name='C:/Users/김수정/Documents/GitHub/text_mining/test_data.xlsx'
+  file_name='C:/Users/김수정/Documents/GitHub/text_mining/test_data_big.xlsx'
   return pd.read_excel(file_name, usecols=target_field)
 
 def language_type_filter(patent_text, lan_type):
