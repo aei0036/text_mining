@@ -4,12 +4,14 @@
 from nltk.tokenize import word_tokenize
 from nltk.tag import pos_tag
 from nltk.stem import WordNetLemmatizer
+from nltk.stem import PorterStemmer
 from nltk.corpus import stopwords
 from nltk import Text
 import numpy as np
 import pandas as pd
 import time
 from gensim.models import Word2Vec
+
 #from konlpy.tag import Okt
 #from konlpy.tag import Kkma
 
@@ -21,6 +23,8 @@ from gensim.models import Word2Vec
 # 분석 대상 필드(분석 대상 엑셀 1행과 명칭 통일 / '국가코드'는 고정(영어/한국어 파악을 위한 필드))
 target_field = ['국가코드','발명의 명칭','요약','대표청구항']
 
+#엑셀 파일 경로
+file_name='C:/Users/김수정/Documents/GitHub/text_mining/test_data_game.xlsx'
 
 
 def preprocess(text):
@@ -41,7 +45,6 @@ def preprocess(text):
 
 
 def patent_data_open():
-  file_name='C:/Users/김수정/Documents/GitHub/text_mining/test_data_big.xlsx'
   return pd.read_excel(file_name, usecols=target_field)
 
 def language_type_filter(patent_text, lan_type):
@@ -59,6 +62,8 @@ def language_type_filter(patent_text, lan_type):
 #def token_kr(text):
 #  okt = Okt()
 #  kkma = Kkma()
+
+
 
 def token_us(text):
 
@@ -140,9 +145,10 @@ def token_us(text):
 
   return result_token
 
+def tokenize_us(text):
 
-def vec_us(text):
-  # 분석 대상 데이터 소문자로 통일
+  total_sentence = ['' for i in range (len(text.index))]
+
   for i in range (1, len(target_field)):
     text[i] = text[target_field[i]].str.lower()
 
@@ -158,21 +164,39 @@ def vec_us(text):
   sentence_to_token = ['' for i in range (len(text_to_sentence))]
   for i in range (len(text_to_sentence)):
     sentence_to_token[i] = str(text_to_sentence[i]).replace('[','').replace(']','').replace("'",'').replace(",",'').split(' ')
+  
+  #porter algorithm 기반 stemming
+  stemmer = PorterStemmer()
+  stemmer_words = [[] for i in range (len(sentence_to_token))]   #엑셀 행별로 작업
+  for i in range(len(sentence_to_token)):
+    for word in sentence_to_token[i]:
+      new_word = stemmer.stem(word)
+      stemmer_words[i].append(new_word)
 
   #불용어 제거
   stop_words = set(stopwords.words('english'))
-  result_words = [[] for i in range (len(sentence_to_token))]   #엑셀 행별로 작업
+  result_words = [[] for i in range (len(stemmer_words))]   #엑셀 행별로 작업
 
   #길이가 2 이하인 단어 및 불용어 제거
-  for i in range(len(sentence_to_token)):
-    for word in sentence_to_token[i]:
+  for i in range(len(stemmer_words)):
+    for word in stemmer_words[i]:
       if len(word) > 2:
         if word not in stop_words:
           result_words[i].append(word)
 
-  model = Word2Vec(result_words, vector_size=300, window=7, min_count=5, workers=1)
+  #for i in range(len(result_words)):
+  #  print(i, result_words[i])
 
-  model_result = model.wv.most_similar("car")
+  return result_words
+
+
+def vec_us(text):
+
+  model = Word2Vec(text, vector_size=300, window=7, min_count=5, workers=1)
+  word_vectors = model.wv
+  #vocabs = word_vectors.vocab.keys()
+  #word_vectors_list = [word_vectors[v] for v in vocabs]
+  model_result = model.wv.most_similar("game")
   print(model_result)
 
 def job():
@@ -190,17 +214,19 @@ def job():
   #token_kr(patent_text_kr)
 
   # 영어 토큰화 및 단어사용빈도 카운팅
-  sentence_to_token_us = token_us(patent_text_us)
+  #sentence_to_token_us = token_us(patent_text_us)
 
   #활용 단어 사전 형성(단어 - id 매칭 / corpus : 단어id목록)
-  corpus, word_to_id, id_to_word = preprocess(sentence_to_token_us[0])
+  #corpus, word_to_id, id_to_word = preprocess(sentence_to_token_us[0])
 
   # 영어 토큰화 및 word2vec 라이브러리 사용
-  sentence_to_vec_us = vec_us(patent_text_us)
+
+  tokenized_us = tokenize_us(patent_text_us)
+  vec_us(tokenized_us)
 
 
-  print(word_to_id)
-  print(id_to_word)
+  #print(word_to_id)
+  #print(id_to_word)
 
   #실행시간체크종료
   end_time = time.time()
