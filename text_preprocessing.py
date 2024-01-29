@@ -157,7 +157,7 @@ def vec_us(text):
   #문장을 단어로 분할
   sentence_to_token = ['' for i in range (len(text_to_sentence))]
   for i in range (len(text_to_sentence)):
-    sentence_to_token[i] = str(text_to_sentence[i]).replace('[','').replace(']','').replace("'",'').split(' ')
+    sentence_to_token[i] = str(text_to_sentence[i]).replace('[','').replace(']','').replace("'",'').replace(",",'').split(' ')
 
   #불용어 제거
   stop_words = set(stopwords.words('english'))
@@ -172,17 +172,16 @@ def vec_us(text):
 
   model = Word2Vec(result_words, vector_size=300, window=7, min_count=5, workers=1)
 
-  model_result = model.wv.most_similar("vehicle")
+  model_result = model.wv.most_similar("car")
   print(model_result)
 
 def job():
   
   #실행시간체크시작
   start_time = time.time()
-
+  
   # 특허 excel data 읽어옴
   patent_text = patent_data_open()
-  
   # excel data 한국어/영어 구분
   patent_text_kr = language_type_filter(patent_text,'kr')
   patent_text_us = language_type_filter(patent_text,'us')
@@ -191,16 +190,17 @@ def job():
   #token_kr(patent_text_kr)
 
   # 영어 토큰화 및 단어사용빈도 카운팅
-  #sentence_to_token_us = token_us(patent_text_us)
+  sentence_to_token_us = token_us(patent_text_us)
 
   #활용 단어 사전 형성(단어 - id 매칭 / corpus : 단어id목록)
-  #corpus, word_to_id, id_to_word = preprocess(sentence_to_token_us[0])
+  corpus, word_to_id, id_to_word = preprocess(sentence_to_token_us[0])
 
   # 영어 토큰화 및 word2vec 라이브러리 사용
   sentence_to_vec_us = vec_us(patent_text_us)
 
 
-  #print(token_us_vocab)
+  print(word_to_id)
+  print(id_to_word)
 
   #실행시간체크종료
   end_time = time.time()
