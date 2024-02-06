@@ -14,14 +14,13 @@ from gensim.models import Word2Vec
 from gensim.models import CoherenceModel
 from gensim import corpora
 import gensim
-
+import re
 import pyLDAvis
 import pyLDAvis.gensim_models as gensimvis
 
-import os
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-os.environ['LANG'] = 'en_US.UTF-8'
-os.environ['LC_ALL'] = 'en_US.UTF-8'
 #from konlpy.tag import Okt
 #from konlpy.tag import Kkma
 
@@ -34,10 +33,15 @@ os.environ['LC_ALL'] = 'en_US.UTF-8'
 target_field = ['국가코드','발명의 명칭','요약','대표청구항']
 
 #엑셀 파일 경로
-file_name='C:/Users/김수정/Documents/GitHub/text_mining/test_data_game.xlsx'
+in_file_path='C:/Users/김수정/Documents/GitHub/text_mining/test_data_mini.xlsx'
+out_file_path = 'C:/Users/김수정/Documents/GitHub/text_mining/output_file.xlsx'
 
 # 사용할 품사 선택
-select_pos_tag = ['NN', 'JJ', 'NNS']
+select_pos_tag = ['NN', 'JJ', 'NNS', 'VB', 'VBD', 'VBG', 'VBN']
+
+#최소 토픽수
+MINI_topic = 2
+
 
 def preprocess(text):
   words = []
@@ -63,10 +67,6 @@ def preprocess(text):
   #return corpus, word_to_id, id_to_word
   return word_to_id, id_to_word
 
-
-def patent_data_open():
-  return pd.read_excel(file_name, usecols=target_field)
-
 def language_type_filter(patent_text, lan_type):
   if (lan_type=='kr'):
     patent_text_filter = patent_text.loc[(patent_text['국가코드'] == 'KR') | (patent_text['국가코드'] == 'JP')]
@@ -79,31 +79,26 @@ def language_type_filter(patent_text, lan_type):
   return patent_text_filter
 
 
-#def token_kr(text):
-#  okt = Okt()
-#  kkma = Kkma()
-
-
-
 def token_us(text):
 
-  #text_temp = [ 0 for i in range (len(target_field))]
-
+  text_temp = pd.DataFrame()
+  
   # 분석 대상 데이터 소문자로 통일
   for i in range (1, len(target_field)):
-    text[i] = text[target_field[i]].str.lower()
-
+    text_temp[i] = text[target_field[i]].str.lower()
+  
   #대표청구항 문장 토큰화(word_tokenize()) 및 품사 매칭(pos_tag())
   for i in range (1, len(target_field)):
-     text[f'{target_field[i]}_명사추출'] = text[i].apply(lambda x: pos_tag(word_tokenize(x)))
+     text_temp[f'{target_field[i]}_품사추출'] = text_temp[i].apply(lambda x: pos_tag(word_tokenize(x)))
   
+
   #선택한 품사만 추출
   NN_words = [[] for i in range (len(text.index))]
   total_NN_words = []
 
-  for i in range (len(text.index)):
+  for i in range (len(text_temp.index)):
     for j in range (1, len(target_field)):
-      for word, pos in text[f'{target_field[j]}_명사추출'].values[i]:
+      for word, pos in text_temp[f'{target_field[j]}_품사추출'].values[i]:
         for sel_tag in select_pos_tag:
           if sel_tag in pos:
             total_NN_words.append(word)
@@ -186,105 +181,6 @@ def token_us(text):
 
   return result_token
 
-def tokenize_us(text):
-
-  total_sentence = ['' for i in range (len(text.index))]
-
-  for i in range (1, len(target_field)):
-    text[i] = text[target_field[i]].str.lower()
-
-  #문장 토큰화(word_tokenize()) 및 품사 매칭(pos_tag())
-  text_to_sentence = []
-
-  #문장 단위로 분할
-  for i in range (1, len(target_field)):
-    for j in range (len(text.index)):
-      text_to_sentence.append(text[i].values[j].replace(':','.').replace(',','.').replace(';','.').split('.'))
-  
-  #문장을 단어로 분할
-  sentence_to_token = ['' for i in range (len(text_to_sentence))]
-  for i in range (len(text_to_sentence)):
-    sentence_to_token[i] = str(text_to_sentence[i]).replace('[','').replace(']','').replace("'",'').replace(",",'').split(' ')
-  
-  #porter algorithm 기반 stemming
-  stemmer = PorterStemmer()
-  stemmer_words = [[] for i in range (len(sentence_to_token))]   #엑셀 행별로 작업
-  for i in range(len(sentence_to_token)):
-    for word in sentence_to_token[i]:
-      new_word = stemmer.stem(word)
-      stemmer_words[i].append(new_word)
-
-  #불용어 제거
-  stop_words = set(stopwords.words('english'))
-  result_words = [[] for i in range (len(stemmer_words))]   #엑셀 행별로 작업
-
-  #길이가 2 이하인 단어 및 불용어 제거
-  for i in range(len(stemmer_words)):
-    for word in stemmer_words[i]:
-      if len(word) > 2:
-        if word not in stop_words:
-          result_words[i].append(word)
-
-  #for i in range(len(result_words)):
-  #  print(i, result_words[i])
-
-  return result_words
-
-def LDA_model(corpus, id_to_word, sentence_to_token_us):
-
-  tokens = []
-
-  for i in range(len(sentence_to_token_us)):
-    tokens.append(list(sentence_to_token_us[i].keys()))
-  #print(id_to_word.keys())
-  # dictionary.doc2bow(token)을 통해 만드는 corpus 랑 내가 만드는 corpus가 불일치
-    
-  coherence_score = []
-  #print(tokens)
-  dictionary = corpora.Dictionary(tokens)
-
-  #dictionary.filter_extremes(no_below=2) # 빈도 2미만 단어 제거
-  print(len(dictionary.token2id))
-  #corpus2 = [dictionary.doc2bow(token) for token in tokens] 
-  #print(corpus)
-
-  for i in range(2,10):
-
-    model = gensim.models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary, num_topics=i, passes=10)
-    coherence_model = CoherenceModel(model, texts=tokens, dictionary=dictionary, coherence='c_v')
-    coherence_lda = coherence_model.get_coherence()
-    print('k=',i,'\nCoherence Score: ', coherence_lda)
-    coherence_score.append(coherence_lda)
-
-  #가장 높은 토픽수로 최종훈련
-  max_topic = max(coherence_score)
-  max_topic_index = coherence_score.index(max_topic)
-  print("max_topic_index : ",max_topic_index)
-
-  final_model = gensim.models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary, num_topics=max_topic_index+2, passes=10)
-  print(final_model.print_topics())
-  
-  prepared_data = gensimvis.prepare(topic_model=final_model, corpus=corpus, dictionary=dictionary)
-
-  pyLDAvis.display(prepared_data)
-  # 훈련된 모델에서 각 문서의 토픽 분포 얻기
-  #topic_distribution = [final_model.get_document_topics(doc) for doc in corpus]
-
-  # 각 문서를 가장 관련성 높은 토픽으로 분류
-  #classified_topics = [max(dist, key=lambda x: x[1])[0] for dist in topic_distribution]
-
-  # 분류 결과를 DataFrame에 추가
-  #print("[classified_file] \n", classified_topics)
-
-def vec_us(text):
-
-  model = Word2Vec(text, vector_size=300, window=7, min_count=5, workers=1)
-  word_vectors = model.wv
-  #vocabs = word_vectors.vocab.keys()
-  #word_vectors_list = [word_vectors[v] for v in vocabs]
-  model_result = model.wv.most_similar("game")
-  #print(model_result)
-
 # token 변경 ('단어 : 빈도' 로 구성된 dict의 리스트)를 ((id, 빈도)로 구성된 튜플의 리스트)로 변경
 def wti(word_to_id, token):
   
@@ -300,14 +196,148 @@ def wti(word_to_id, token):
   return new_token
 
 
+def LDA_model(sentence_to_token_us, min_topic):
+
+  tokens = []
+
+  for i in range(len(sentence_to_token_us)):
+    tokens.append(list(sentence_to_token_us[i].keys()))
+    
+  coherence_score = []
+  dictionary = corpora.Dictionary(tokens)
+
+  #dictionary.filter_extremes(no_below=2) # 빈도 2미만 단어 제거
+  print("words num : ", len(dictionary.token2id))
+
+  #아래 함수 사용하면 빈도수가 모두 1인 corpus가 생성됨.... 그래서 아래 wti함수 활용
+  #corpus2 = [dictionary.doc2bow(token) for token in tokens] 
+  corpus = wti(dictionary.token2id, sentence_to_token_us)
+
+  for i in range(min_topic,min_topic + 2):
+  
+
+    model = gensim.models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary, num_topics=i, passes=15)
+    coherence_model = CoherenceModel(model, texts=tokens, dictionary=dictionary, coherence='c_v')
+    coherence_lda = coherence_model.get_coherence()
+    print('k=',i,'\nCoherence Score: ', coherence_lda)
+    coherence_score.append(coherence_lda)
+
+  #가장 높은 토픽수로 최종훈련
+  max_topic = max(coherence_score)
+  max_topic_index = coherence_score.index(max_topic)
+
+  final_model = gensim.models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary, num_topics=max_topic_index + min_topic, passes=10)
+  
+  prepared_data = gensimvis.prepare(topic_model=final_model, corpus=corpus, dictionary=dictionary)
+  #pyLDAvis.display(prepared_data)
+  #pyLDAvis.enable_notebook(local=True)
+  pyLDAvis.save_html(prepared_data,'C:/Users/김수정/Documents/GitHub/text_mining/lda.html')
+  #pyLDAvis.show(prepared_data)
+
+  # 훈련된 모델에서 각 문서의 토픽 분포 얻기
+  topic_distribution = [final_model.get_document_topics(doc) for doc in corpus]
+
+  # 각 문서를 가장 관련성 높은 토픽으로 분류
+  classified_topics = [max(dist, key=lambda x: x[1])[0] for dist in topic_distribution]
+
+  # 분류 결과를 DataFrame에 추가
+  #print("[classified_file] \n", classified_topics)
+  return final_model.print_topics(), topic_distribution, classified_topics
+
+def vec_us(text):
+
+  model = Word2Vec(text, vector_size=300, window=7, min_count=5, workers=1)
+  word_vectors = model.wv
+  #vocabs = word_vectors.vocab.keys()
+  #word_vectors_list = [word_vectors[v] for v in vocabs]
+  model_result = model.wv.most_similar("game")
+  #print(model_result)
+
+def patent_data_out(patent, topic_word, classified_topics, topic_distribution):
+  
+  #topic열을 기존 df(특허 엑셀 데이터)의 맨 앞에 붙임
+  df_patent = pd.DataFrame(patent)
+  df_patent.insert(0, 'topic', classified_topics)
+  df_patent.insert(1, 'topic_dist', topic_distribution)
+
+  # 토픽 결과를 데이터프레임으로 변환
+  columns = ['Topic', 'Keywords']
+  df_topics = pd.DataFrame(topic_word, columns=columns)
+
+  with pd.ExcelWriter(out_file_path, engine='xlsxwriter', mode='w') as writer:
+    # patent 데이터프레임을 'DATA' 시트에 작성
+    df_patent.to_excel(writer, sheet_name='DATA', index=False)
+
+    # topic정보에 대한 데이터프레임을 'TOPIC' 시트에 작성
+    df_topics.to_excel(writer, sheet_name='TOPIC', index=False)
+
+
+# keyword기반 코사인 유사도 분석
+def keywords_cosine_similary(sentence_to_token_count_us, topic_word, classified_topics):
+
+  #문헌별로 키워드를 추출하여 문자열로 변환한후 keyword_list에 저장
+  keyword_list = []
+  for i in range(len(sentence_to_token_count_us)):
+    #키워드를 list로 추출
+    temp_list = list(sentence_to_token_count_us[i].keys())
+
+    #하나의 문자열로 합치기
+    keyword_list_str = ' '.join(temp_list)
+
+    keyword_list.append(keyword_list_str)
+
+  #토픽별로 키워드를 추출하여 topic_words_list에 저장
+  topic_words_list = []
+  for i in range(len(topic_word)):
+    #키워드를 list로 추출( " " 사이 문자를 리스트로 뽑아내는 정규표현식)
+    temp_list = re.findall(r'"(.*?)"', topic_word[i][1])
+    
+    #하나의 문자열로 합치기
+    topic_words_list_str = ' '.join(temp_list)
+    
+    #keyword_list에 합침... 즉, keyword_list = 특허문서 keyword + 토픽 keyword
+    keyword_list.append(topic_words_list_str)
+
+  # TF-IDF 벡터화
+  vectorizer = TfidfVectorizer()
+  tfidf_matrix = vectorizer.fit_transform(keyword_list)
+
+  #dense Matrix로 변환
+  feature_vect_dense = tfidf_matrix.todense()
+
+  print('TF-IDF 행렬의 크기(shape) :',tfidf_matrix.shape)
+
+  topic_vec = []
+  patent_vec = []
+
+  #각 문장의 feature vector 추출 / topic vector와 특허 벡터 별도 분리
+  for i in range (len(keyword_list)):
+    if i < len(keyword_list) - len(topic_word):
+      patent_vec.append(np.array(feature_vect_dense[i]).reshape( -1,1))
+    else: topic_vec.append(np.array(feature_vect_dense[i]).reshape(-1,1))
+
+  print(topic_vec[0].shape)
+  print(patent_vec[0].shape)
+  # 코사인 유사도 계산
+  similarities = []
+  for i in range (len(patent_vec)):
+    similarities.append(cosine_similarity(topic_vec[0], patent_vec[i]))
+
+  # 결과 출력
+  #for i, sim in enumerate(similarities[0]):
+  #    print(f"유사도 데이터 {i + 1}: {sim}")
+
+
+
+
 def job():
   
   #실행시간체크시작
   start_time = time.time()
   
   # 특허 excel data 읽어옴
-  patent_text = patent_data_open()
-  
+  patent_text = pd.read_excel(in_file_path)
+
   # excel data 한국어/영어 구분
   patent_text_kr = language_type_filter(patent_text,'kr')
   patent_text_us = language_type_filter(patent_text,'us')
@@ -318,16 +348,16 @@ def job():
   # 영어 토큰화 및 단어사용빈도 카운팅
   sentence_to_token_count_us = token_us(patent_text_us)
 
-  #print(sentence_to_token_us[0]) #문서 전체 통합 토큰화
-  #print(sentence_to_token_us[1]) #특허별로 토큰화
 
   # word : id dictionary 생성
-  word_to_id, id_to_word = preprocess(sentence_to_token_count_us[0])
+  #word_to_id, id_to_word = preprocess(sentence_to_token_count_us[0])
+  min_topic = MINI_topic
+  topic_word, topic_distribution, classified_topics = LDA_model(sentence_to_token_count_us[1], min_topic)
 
-  # 단어 -> id로 변환
-  corpus = wti(word_to_id, sentence_to_token_count_us[1])
+  keywords_cosine_similary(sentence_to_token_count_us[1], topic_word, classified_topics)
+  # excel 출력
+  patent_data_out(patent_text_us, topic_word, classified_topics, topic_distribution)
   
-  LDA_model(corpus, id_to_word, sentence_to_token_count_us[1])
   #활용 단어 사전 형성(단어 - id 매칭 / corpus : 단어id목록)
   #corpus, word_to_id, id_to_word = preprocess(sentence_to_token_us[0])
 
