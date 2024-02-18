@@ -253,13 +253,15 @@ def vec_us(text):
   model_result = model.wv.most_similar("game")
   #print(model_result)
 
-def patent_data_out(patent, topic_word, classified_topics, topic_distribution):
+def patent_data_out(patent, topic_word, classified_topics, cos_sim, topic_distribution):
   
-  #topic열을 기존 df(특허 엑셀 데이터)의 맨 앞에 붙임
+  #분석 데이터를 기존 df(특허 엑셀 데이터)의 맨 앞에 붙임
   df_patent = pd.DataFrame(patent)
   df_patent.insert(0, 'topic', classified_topics)
   df_patent.insert(1, 'topic_dist', topic_distribution)
-
+  for i in range(len(cos_sim)):
+    df_patent.insert(i+2, 'cos_similary_'+str(i), cos_sim[i])
+  
   # 토픽 결과를 데이터프레임으로 변환
   columns = ['Topic', 'Keywords']
   df_topics = pd.DataFrame(topic_word, columns=columns)
@@ -273,10 +275,11 @@ def patent_data_out(patent, topic_word, classified_topics, topic_distribution):
 
 
 # keyword기반 코사인 유사도 분석
-def keywords_cosine_similary(sentence_to_token_count_us, topic_word, classified_topics):
+def keywords_cosine_similary(sentence_to_token_count_us, topic_word):
 
   #문헌별로 키워드를 추출하여 문자열로 변환한후 keyword_list에 저장
   keyword_list = []
+  topic_list = []
   for i in range(len(sentence_to_token_count_us)):
     #키워드를 list로 추출
     temp_list = list(sentence_to_token_count_us[i].keys())
@@ -287,7 +290,6 @@ def keywords_cosine_similary(sentence_to_token_count_us, topic_word, classified_
     keyword_list.append(keyword_list_str)
 
   #토픽별로 키워드를 추출하여 topic_words_list에 저장
-  topic_words_list = []
   for i in range(len(topic_word)):
     #키워드를 list로 추출( " " 사이 문자를 리스트로 뽑아내는 정규표현식)
     temp_list = re.findall(r'"(.*?)"', topic_word[i][1])
@@ -295,39 +297,26 @@ def keywords_cosine_similary(sentence_to_token_count_us, topic_word, classified_
     #하나의 문자열로 합치기
     topic_words_list_str = ' '.join(temp_list)
     
-    #keyword_list에 합침... 즉, keyword_list = 특허문서 keyword + 토픽 keyword
-    keyword_list.append(topic_words_list_str)
+    
+    topic_list.append(topic_words_list_str)
 
-  # TF-IDF 벡터화
-  vectorizer = TfidfVectorizer()
-  tfidf_matrix = vectorizer.fit_transform(keyword_list)
+  cosine_similarities = []
+  for i in range(len(topic_list)):
+    # TF-IDF 벡터화
+    vectorizer = TfidfVectorizer()
+    tfidf_matrix_topic = vectorizer.fit_transform([topic_list[i]])
+    tfidf_matrix_keyword = vectorizer.transform(keyword_list)
+    
+    # 코사인 유사도 계산
+    cosine_similarities.append(cosine_similarity(tfidf_matrix_topic, tfidf_matrix_keyword))
 
-  #dense Matrix로 변환
-  feature_vect_dense = tfidf_matrix.todense()
-
-  print('TF-IDF 행렬의 크기(shape) :',tfidf_matrix.shape)
-
-  topic_vec = []
-  patent_vec = []
-
-  #각 문장의 feature vector 추출 / topic vector와 특허 벡터 별도 분리
-  for i in range (len(keyword_list)):
-    if i < len(keyword_list) - len(topic_word):
-      patent_vec.append(np.array(feature_vect_dense[i]).reshape( -1,1))
-    else: topic_vec.append(np.array(feature_vect_dense[i]).reshape(-1,1))
-
-  print(topic_vec[0].shape)
-  print(patent_vec[0].shape)
-  # 코사인 유사도 계산
-  similarities = []
-  for i in range (len(patent_vec)):
-    similarities.append(cosine_similarity(topic_vec[0], patent_vec[i]))
-
-  # 결과 출력
-  #for i, sim in enumerate(similarities[0]):
-  #    print(f"유사도 데이터 {i + 1}: {sim}")
-
-
+    # 어레이를 2차원 리스트로 변환
+    cosime_sim_list = [arr[0].tolist() for arr in cosine_similarities]
+  return cosime_sim_list
+    # 결과 출력
+    #for i, similarity in enumerate(cosine_similarities[0]):
+    #    print(keyword_list[i])
+    #    print(f"코사인 유사도 (topic_word와 test_word[{i}]): {similarity}")
 
 
 def job():
@@ -354,9 +343,9 @@ def job():
   min_topic = MINI_topic
   topic_word, topic_distribution, classified_topics = LDA_model(sentence_to_token_count_us[1], min_topic)
 
-  keywords_cosine_similary(sentence_to_token_count_us[1], topic_word, classified_topics)
+  cos_sim = keywords_cosine_similary(sentence_to_token_count_us[1], topic_word)
   # excel 출력
-  patent_data_out(patent_text_us, topic_word, classified_topics, topic_distribution)
+  patent_data_out(patent_text_us, topic_word, classified_topics, cos_sim, topic_distribution)
   
   #활용 단어 사전 형성(단어 - id 매칭 / corpus : 단어id목록)
   #corpus, word_to_id, id_to_word = preprocess(sentence_to_token_us[0])
