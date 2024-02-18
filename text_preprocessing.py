@@ -33,8 +33,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 target_field = ['국가코드','발명의 명칭','요약','대표청구항']
 
 #엑셀 파일 경로
-in_file_path='C:/Users/김수정/Documents/GitHub/text_mining/test_data_mini.xlsx'
+in_file_path='C:/Users/김수정/Documents/GitHub/text_mining/test_data_battery.xlsx'
 out_file_path = 'C:/Users/김수정/Documents/GitHub/text_mining/output_file.xlsx'
+LDA_html_path = 'C:/Users/김수정/Documents/GitHub/text_mining/lda.html'
 
 # 사용할 품사 선택
 select_pos_tag = ['NN', 'JJ', 'NNS', 'VB', 'VBD', 'VBG', 'VBN']
@@ -213,7 +214,7 @@ def LDA_model(sentence_to_token_us, min_topic):
   #corpus2 = [dictionary.doc2bow(token) for token in tokens] 
   corpus = wti(dictionary.token2id, sentence_to_token_us)
 
-  for i in range(min_topic,min_topic + 2):
+  for i in range(min_topic,min_topic + 20):
   
 
     model = gensim.models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary, num_topics=i, passes=15)
@@ -231,7 +232,7 @@ def LDA_model(sentence_to_token_us, min_topic):
   prepared_data = gensimvis.prepare(topic_model=final_model, corpus=corpus, dictionary=dictionary)
   #pyLDAvis.display(prepared_data)
   #pyLDAvis.enable_notebook(local=True)
-  pyLDAvis.save_html(prepared_data,'C:/Users/김수정/Documents/GitHub/text_mining/lda.html')
+  pyLDAvis.save_html(prepared_data,LDA_html_path)
   #pyLDAvis.show(prepared_data)
 
   # 훈련된 모델에서 각 문서의 토픽 분포 얻기
@@ -326,18 +327,18 @@ def job():
   
   # 특허 excel data 읽어옴
   patent_text = pd.read_excel(in_file_path)
-
+  print("0")
   # excel data 한국어/영어 구분
   patent_text_kr = language_type_filter(patent_text,'kr')
   patent_text_us = language_type_filter(patent_text,'us')
-
+  print("1")
   # 한국어 명사 빈도 추출
   #token_kr(patent_text_kr)
 
   # 영어 토큰화 및 단어사용빈도 카운팅
   sentence_to_token_count_us = token_us(patent_text_us)
 
-
+  print("2")
   # word : id dictionary 생성
   #word_to_id, id_to_word = preprocess(sentence_to_token_count_us[0])
   min_topic = MINI_topic
