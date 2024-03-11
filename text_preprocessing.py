@@ -33,7 +33,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 target_field = ['국가코드','발명의 명칭','요약','대표청구항']
 
 #엑셀 파일 경로
-in_file_path='C:/Users/김수정/Documents/GitHub/text_mining/test_data_battery.xlsx'
+in_file_path='C:/Users/김수정/Documents/GitHub/text_mining/test_data_co_catalyst.xlsx'
 out_file_path = 'C:/Users/김수정/Documents/GitHub/text_mining/output_file.xlsx'
 LDA_html_path = 'C:/Users/김수정/Documents/GitHub/text_mining/lda.html'
 
@@ -42,6 +42,9 @@ select_pos_tag = ['NN', 'JJ', 'NNS', 'VB', 'VBD', 'VBG', 'VBN']
 
 #최소 토픽수
 MINI_topic = 2
+
+#특허 불용어
+patent_stop_words = ['said','provid','compris','least','includ','wherein','configur','method']
 
 
 def preprocess(text):
@@ -84,7 +87,7 @@ def token_us(text):
 
   text_temp = pd.DataFrame()
   
-  # 분석 대상 데이터 소문자로 통일
+  # 분석 대상 데이터 소문자로 통일   b
   for i in range (1, len(target_field)):
     text_temp[i] = text[target_field[i]].str.lower()
   
@@ -137,6 +140,8 @@ def token_us(text):
 
   #불용어 제거
   stop_words = set(stopwords.words('english'))
+  stop_words.update(patent_stop_words)
+
   result_words = [[] for i in range (len(text.index))]   #엑셀 행별로 작업
   total_result_words = []  #엑셀 모든 행 키워드에 대해 작업
   for word in total_stemmer_words:
@@ -180,6 +185,7 @@ def token_us(text):
 
   result_token = [total_sort_vocab, sort_vocab]
 
+  print(total_sort_vocab)
   return result_token
 
 # token 변경 ('단어 : 빈도' 로 구성된 dict의 리스트)를 ((id, 빈도)로 구성된 튜플의 리스트)로 변경
@@ -243,7 +249,7 @@ def LDA_model(sentence_to_token_us, min_topic):
 
   # 분류 결과를 DataFrame에 추가
   #print("[classified_file] \n", classified_topics)
-  return final_model.print_topics(), topic_distribution, classified_topics
+  return final_model.print_topics(num_words=20), topic_distribution, classified_topics
 
 def vec_us(text):
 
