@@ -21,31 +21,42 @@ import pyLDAvis.gensim_models as gensimvis
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-#from konlpy.tag import Okt
-#from konlpy.tag import Kkma
-
 
 #===================================================================
 #  Global Value
 #===================================================================
 
 # 분석 대상 필드(분석 대상 엑셀 1행과 명칭 통일 / '국가코드'는 고정(영어/한국어 파악을 위한 필드))
-target_field = ['국가코드','발명의 명칭','요약','대표청구항']
+TARGET_FIELD = ['국가코드','발명의 명칭','요약','대표청구항']
 
 #엑셀 파일 경로
-in_file_path='C:/Users/김수정/Documents/GitHub/text_mining/test_data_co_catalyst.xlsx'
-out_file_path = 'C:/Users/김수정/Documents/GitHub/text_mining/output_file.xlsx'
-LDA_html_path = 'C:/Users/김수정/Documents/GitHub/text_mining/lda.html'
+IN_FILE_PATH='C:/Users/김수정/Documents/GitHub/text_mining/test_data_carbon_reduce.xlsx'
+OUT_FILE_PATH = 'C:/Users/김수정/Documents/GitHub/text_mining/output_file.xlsx'
+LDA_HTML_PATH = 'C:/Users/김수정/Documents/GitHub/text_mining/lda.html'
 
-# 사용할 품사 선택
-select_pos_tag = ['NN', 'JJ', 'NNS', 'VB', 'VBD', 'VBG', 'VBN']
+
+# 사용할 품사 선택..
+SELECT_POS_TAG = ['NN', 'JJ', 'NNS', 'VB', 'VBD', 'VBG', 'VBN']
 
 #최소 토픽수
-MINI_topic = 2
+MINI_TOPIC = 2
+
+#코사인 유사도 결과값 기반 노이즈 판단 기준
+#유사도 최소값
+NOISE_SIM_MIN_VALUE1 = 0.5
+#유사도 최소값(해당 토픽에 해당하는 유사도 최소값)
+NOISE_SIM_MIN_VALUE2 = 0.5
+#유사도 최소값을 만족하는 최소 토픽 수
+NOISE_TOPIC_MIN_VALUE = 2
 
 #특허 불용어
-patent_stop_words = ['said','provid','compris','least','includ','wherein','configur','method']
+PATENT_STOP_WORDS = ['said','provid','compris','least','includ','wherein','configur','method','process','use','determin','system','devic','unit','element']
 
+
+
+#===================================================================
+#  Function
+#===================================================================
 
 def preprocess(text):
   words = []
@@ -88,12 +99,12 @@ def token_us(text):
   text_temp = pd.DataFrame()
   
   # 분석 대상 데이터 소문자로 통일   b
-  for i in range (1, len(target_field)):
-    text_temp[i] = text[target_field[i]].str.lower()
+  for i in range (1, len(TARGET_FIELD)):
+    text_temp[i] = text[TARGET_FIELD[i]].str.lower()
   
   #대표청구항 문장 토큰화(word_tokenize()) 및 품사 매칭(pos_tag())
-  for i in range (1, len(target_field)):
-     text_temp[f'{target_field[i]}_품사추출'] = text_temp[i].apply(lambda x: pos_tag(word_tokenize(x)))
+  for i in range (1, len(TARGET_FIELD)):
+     text_temp[f'{TARGET_FIELD[i]}_품사추출'] = text_temp[i].apply(lambda x: pos_tag(word_tokenize(x)))
   
 
   #선택한 품사만 추출
@@ -101,9 +112,9 @@ def token_us(text):
   total_NN_words = []
 
   for i in range (len(text_temp.index)):
-    for j in range (1, len(target_field)):
-      for word, pos in text_temp[f'{target_field[j]}_품사추출'].values[i]:
-        for sel_tag in select_pos_tag:
+    for j in range (1, len(TARGET_FIELD)):
+      for word, pos in text_temp[f'{TARGET_FIELD[j]}_품사추출'].values[i]:
+        for sel_tag in SELECT_POS_TAG:
           if sel_tag in pos:
             total_NN_words.append(word)
             NN_words[i].append(word)
@@ -139,8 +150,9 @@ def token_us(text):
   #print(lemmatized_words)'''
 
   #불용어 제거
+  print("불용어 제거")
   stop_words = set(stopwords.words('english'))
-  stop_words.update(patent_stop_words)
+  stop_words.update(PATENT_STOP_WORDS)
 
   result_words = [[] for i in range (len(text.index))]   #엑셀 행별로 작업
   total_result_words = []  #엑셀 모든 행 키워드에 대해 작업
@@ -162,11 +174,13 @@ def token_us(text):
   vocab = [{} for i in range (len(result_words))]
 
   #모든 특허에 대하여 카운트
+  print("빈도수 체크 및 소팅")
   for word in total_result_words:
     if word not in total_vocab:
       total_vocab[word] = 0
     total_vocab[word] += 1
-    total_sort_vocab = dict(sorted(total_vocab.items(), key=lambda x: x[1], reverse=True))
+    #total_sort_vocab = dict(sorted(total_vocab.items(), key=lambda x: x[1], reverse=True))
+  total_sort_vocab = dict(sorted(total_vocab.items(), key=lambda x: x[1], reverse=True))
 
   #각 특허별로 카운트
   for i in range(len(result_words)):
@@ -174,7 +188,7 @@ def token_us(text):
       if word not in vocab[i]:
         vocab[i][word] = 0
       vocab[i][word] += 1
-      sort_vocab[i] = dict(sorted(vocab[i].items(), key=lambda x: x[1], reverse=True))
+    sort_vocab[i] = dict(sorted(vocab[i].items(), key=lambda x: x[1], reverse=True))
   
   #각 특허별로 빈도수가 2 이하인 단어 제거
   '''filtered_data = {}
@@ -220,14 +234,16 @@ def LDA_model(sentence_to_token_us, min_topic):
   #corpus2 = [dictionary.doc2bow(token) for token in tokens] 
   corpus = wti(dictionary.token2id, sentence_to_token_us)
 
-  for i in range(min_topic,min_topic + 20):
+  for i in range(min_topic,min_topic + 10):
   
-
     model = gensim.models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary, num_topics=i, passes=15)
     coherence_model = CoherenceModel(model, texts=tokens, dictionary=dictionary, coherence='c_v')
     coherence_lda = coherence_model.get_coherence()
     print('k=',i,'\nCoherence Score: ', coherence_lda)
     coherence_score.append(coherence_lda)
+
+  if (max(coherence_score)<0.55):
+    print("응집도 낮음. 불용어 추가 필요")
 
   #가장 높은 토픽수로 최종훈련
   max_topic = max(coherence_score)
@@ -238,7 +254,7 @@ def LDA_model(sentence_to_token_us, min_topic):
   prepared_data = gensimvis.prepare(topic_model=final_model, corpus=corpus, dictionary=dictionary)
   #pyLDAvis.display(prepared_data)
   #pyLDAvis.enable_notebook(local=True)
-  pyLDAvis.save_html(prepared_data,LDA_html_path)
+  pyLDAvis.save_html(prepared_data,LDA_HTML_PATH)
   #pyLDAvis.show(prepared_data)
 
   # 훈련된 모델에서 각 문서의 토픽 분포 얻기
@@ -260,20 +276,21 @@ def vec_us(text):
   model_result = model.wv.most_similar("game")
   #print(model_result)
 
-def patent_data_out(patent, topic_word, classified_topics, cos_sim, topic_distribution):
+def patent_data_out(patent, topic_word, classified_topics, noise_check, cos_sim, topic_distribution):
   
   #분석 데이터를 기존 df(특허 엑셀 데이터)의 맨 앞에 붙임
   df_patent = pd.DataFrame(patent)
   df_patent.insert(0, 'topic', classified_topics)
   df_patent.insert(1, 'topic_dist', topic_distribution)
+  df_patent.insert(2, 'NOISE', noise_check)
   for i in range(len(cos_sim)):
-    df_patent.insert(i+2, 'cos_similary_'+str(i), cos_sim[i])
+    df_patent.insert(i+3, 'cos_similary_'+str(i), cos_sim[i])
   
   # 토픽 결과를 데이터프레임으로 변환
   columns = ['Topic', 'Keywords']
   df_topics = pd.DataFrame(topic_word, columns=columns)
 
-  with pd.ExcelWriter(out_file_path, engine='xlsxwriter', mode='w') as writer:
+  with pd.ExcelWriter(OUT_FILE_PATH, engine='xlsxwriter', mode='w') as writer:
     # patent 데이터프레임을 'DATA' 시트에 작성
     df_patent.to_excel(writer, sheet_name='DATA', index=False)
 
@@ -326,33 +343,62 @@ def keywords_cosine_similary(sentence_to_token_count_us, topic_word):
     #    print(f"코사인 유사도 (topic_word와 test_word[{i}]): {similarity}")
 
 
+#유사도값 기반 노이즈 판단
+def noise_check_func(cos_sim, classified_topics):
+  noise_check = []
+
+  #특허에 해당하는 토픽과의 유사도값이 0.5이상인 경우 TRUE, 미만이면 NOISE
+  for i in range(len(cos_sim[0])):
+    if (cos_sim[classified_topics[i]][i] > NOISE_SIM_MIN_VALUE2):
+      noise_check.append("TRUE")
+    else: noise_check.append("NOISE")
+
+  '''for col in zip(*cos_sim):
+    # 현재 열에서 0.5 이상인 값의 개수 세기
+    count_above_0_5 = sum(value >= NOISE_SIM_MIN_VALUE1 for value in col)
+        
+    # 0.5 이상인 값이 2개 이상인 경우 True, 그렇지 않으면 False 저장
+    if (count_above_0_5 >= NOISE_TOPIC_MIN_VALUE):
+      noise_checkc
+    else: noise_check.append("NOISE")
+
+  for i in range(len(noise_check)):
+    if (noise_check[i]=="TRUE") and (cos_sim[classified_topics[i]][i] > NOISE_SIM_MIN_VALUE2):
+      noise_check[i]="TRUE"
+    else: noise_check[i]="NOISE"'''
+  
+
+  return noise_check
+
 def job():
   
   #실행시간체크시작
   start_time = time.time()
   
   # 특허 excel data 읽어옴
-  patent_text = pd.read_excel(in_file_path)
-  print("0")
+  patent_text = pd.read_excel(IN_FILE_PATH)
+
   # excel data 한국어/영어 구분
   patent_text_kr = language_type_filter(patent_text,'kr')
   patent_text_us = language_type_filter(patent_text,'us')
-  print("1")
+
   # 한국어 명사 빈도 추출
   #token_kr(patent_text_kr)
 
   # 영어 토큰화 및 단어사용빈도 카운팅
+  print("문장 토큰화 수행")
   sentence_to_token_count_us = token_us(patent_text_us)
-
-  print("2")
+  print("문장 토큰화 종료")
   # word : id dictionary 생성
   #word_to_id, id_to_word = preprocess(sentence_to_token_count_us[0])
-  min_topic = MINI_topic
+  min_topic = MINI_TOPIC
   topic_word, topic_distribution, classified_topics = LDA_model(sentence_to_token_count_us[1], min_topic)
 
   cos_sim = keywords_cosine_similary(sentence_to_token_count_us[1], topic_word)
+
+  noise_check = noise_check_func(cos_sim, classified_topics)
   # excel 출력
-  patent_data_out(patent_text_us, topic_word, classified_topics, cos_sim, topic_distribution)
+  patent_data_out(patent_text_us, topic_word, classified_topics, noise_check, cos_sim, topic_distribution)
   
   #활용 단어 사전 형성(단어 - id 매칭 / corpus : 단어id목록)
   #corpus, word_to_id, id_to_word = preprocess(sentence_to_token_us[0])
