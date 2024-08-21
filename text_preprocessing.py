@@ -17,6 +17,7 @@ import gensim
 import re
 import pyLDAvis
 import pyLDAvis.gensim_models as gensimvis
+from openai import OpenAI
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -27,10 +28,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 #===================================================================
 
 # 분석 대상 필드(분석 대상 엑셀 1행과 명칭 통일 / '국가코드'는 고정(영어/한국어 파악을 위한 필드))
-TARGET_FIELD = ['국가코드','발명의 명칭','요약','대표청구항']
+TARGET_FIELD = ['국가코드','발명의 명칭','대표청구항']
 
 #엑셀 파일 경로
-IN_FILE_PATH='C:/Users/김수정/Documents/GitHub/text_mining/test_data_carbon_reduce.xlsx'
+IN_FILE_PATH='C:/Users/김수정/Documents/GitHub/text_mining/KETI_240820.xlsx'
 OUT_FILE_PATH = 'C:/Users/김수정/Documents/GitHub/text_mining/output_file.xlsx'
 LDA_HTML_PATH = 'C:/Users/김수정/Documents/GitHub/text_mining/lda.html'
 
@@ -52,7 +53,9 @@ NOISE_TOPIC_MIN_VALUE = 2
 #특허 불용어
 PATENT_STOP_WORDS = ['said','provid','compris','least','includ','wherein','configur','method','process','use','determin','system','devic','unit','element']
 
-
+OPENAI_API_KEY = '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'
+#openai API key
+client = OpenAI(api_key = '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',)
 
 #===================================================================
 #  Function
@@ -342,6 +345,38 @@ def keywords_cosine_similary(sentence_to_token_count_us, topic_word):
     #    print(keyword_list[i])
     #    print(f"코사인 유사도 (topic_word와 test_word[{i}]): {similarity}")
 
+def translate_kr(text):
+
+  text_temp = pd.DataFrame()  
+
+  # OpenAI를 사용하여 텍스트 번역
+  def translate_text(text):
+    
+    response = client.chat.completions.create(
+      model="gpt-4o-mini",  # GPT-4 모델 사용
+       messages=[
+          {"role": "system", "content": "You are a helpful assistant skilled in legal and technical translations."},
+          {"role": "user", "content": f"Translate the following Korean text to English. This is a patent document:\n\n{text}"}
+        ],
+      max_tokens=150,  # 출력될 번역 결과의 최대 토큰 수
+      temperature=0.3  # 번역의 창의성 수준 조절
+    )
+        
+    return response.choices[0].message.content.strip()
+
+  # 분석 대상 데이터 저장 및 번역
+  for i in range(1, len(TARGET_FIELD)):
+    # 원본 텍스트
+    original_text = text[TARGET_FIELD[i]]
+        
+    # 번역된 텍스트 저장
+    text_temp[i] = original_text.apply(translate_text)
+
+  print(text_temp)
+  return text_temp
+
+
+  print(text_temp)
 
 #유사도값 기반 노이즈 판단
 def noise_check_func(cos_sim, classified_topics):
@@ -379,18 +414,19 @@ def job():
   patent_text = pd.read_excel(IN_FILE_PATH)
 
   # excel data 한국어/영어 구분
-  patent_text_kr = language_type_filter(patent_text,'kr')
+#  patent_text_kr = language_type_filter(patent_text,'kr')
   patent_text_us = language_type_filter(patent_text,'us')
 
-  # 한국어 명사 빈도 추출
-  #token_kr(patent_text_kr)
+
+  # 한국어 영어로 번역
+  #translate_kr(patent_text_kr)
 
   # 영어 토큰화 및 단어사용빈도 카운팅
   print("문장 토큰화 수행")
   sentence_to_token_count_us = token_us(patent_text_us)
   print("문장 토큰화 종료")
   # word : id dictionary 생성
-  #word_to_id, id_to_word = preprocess(sentence_to_token_count_us[0])
+  word_to_id, id_to_word = preprocess(sentence_to_token_count_us[0])
   min_topic = MINI_TOPIC
   topic_word, topic_distribution, classified_topics = LDA_model(sentence_to_token_count_us[1], min_topic)
 
@@ -401,12 +437,12 @@ def job():
   patent_data_out(patent_text_us, topic_word, classified_topics, noise_check, cos_sim, topic_distribution)
   
   #활용 단어 사전 형성(단어 - id 매칭 / corpus : 단어id목록)
-  #corpus, word_to_id, id_to_word = preprocess(sentence_to_token_us[0])
+  corpus, word_to_id, id_to_word = preprocess(sentence_to_token_us[0])
 
   # 영어 토큰화 및 word2vec 라이브러리 사용
 
-  #tokenized_us = tokenize_us(patent_text_us)
-  #vec_us(tokenized_us)
+  tokenized_us = tokenize_us(patent_text_us)
+  vec_us(tokenized_us)
 
 
   #print(word_to_id)
